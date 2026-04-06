@@ -1,14 +1,8 @@
 function StatCard({ title, value }) {
     return (
-        <div style={{
-            border: "1px solid #ccc",
-            padding: "20px",
-            borderRadius: "10px",
-            width: "200px",
-            textAlign: "center"
-        }}>
-            <h3>{title}</h3>
-            <h2>{value}</h2>
+        <div className="bg-gray-800 rounded-2xl p-6 shadow-lg">
+            <h3 className="text-gray-400 text-sm">{title}</h3>
+            <h2 className="text-3xl font-bold mt-2">{value}</h2>
         </div>
     );
 }

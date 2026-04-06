@@ -1,6 +1,7 @@
 const express = require("express");
 const si = require("systeminformation");
 const cors = require("cors");
+const os = require("os");
 
 const app = express();
 
@@ -9,13 +10,27 @@ app.use(cors());
 
 // API route
 app.get("/metrics", async (req, res) => {
-    const cpu = await si.currentLoad();
-    const mem = await si.mem();
+    try {
+        const cpuData = await si.currentLoad();
 
-    res.json({
-        cpu: cpu.currentLoad,
-        memory: (mem.used / mem.total) * 100
-    });
+        const totalMem = os.totalmem();
+        const freeMem = os.freemem();
+        const usedMem = totalMem - freeMem;
+
+        const memoryUsage = (usedMem / totalMem) * 100;
+
+        const uptime = os.uptime(); // seconds
+
+        res.json({
+            cpu: cpuData.currentLoad, // ✅ real CPU %
+            memory: memoryUsage,      // ✅ memory %
+            totalMem: (totalMem / (1024 ** 3)).toFixed(2), // GB
+            uptime: uptime
+        });
+    } catch (error) {
+        console.error("Error fetching metrics:", error);
+        res.status(500).json({ error: "Failed to fetch metrics" });
+    }
 });
 
 // start server
