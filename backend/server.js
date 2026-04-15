@@ -1,10 +1,15 @@
 // backend/server.js
+import cors from "cors";
+
+
+app.use(cors());
 const express = require("express");
 const si = require("systeminformation");
 const cors = require("cors");
 const os = require("os");
 const fs = require("fs");
 const path = require("path");
+
 
 const LOG_FILE = path.join(__dirname, "metrics-log.json");
 
