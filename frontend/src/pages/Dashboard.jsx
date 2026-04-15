@@ -2,7 +2,6 @@ import StatCard from "../components/StatCard";
 import Charts from "../components/Charts";
 import { useState, useEffect } from "react";
 
-
 function Dashboard() {
     const [CPU, setCPU] = useState("0%");
     const [Memory, setMemory] = useState("0%");
@@ -13,21 +12,16 @@ function Dashboard() {
     const [alertHistory, setAlertHistory] = useState([]);
     const [selectedTimestamp, setSelectedTimestamp] = useState(null);
     const [processes, setProcesses] = useState([]);
-
     const [historyData, setHistoryData] = useState([]);
-    console.log(historyData);
+
+    const API_BASE = "https://overwatch-backend-p3go.onrender.com";
 
     const ALERT_COOLDOWN = 10000;
 
-    // ✅ helpers FIRST
-    const getStdDev = (arr, key, mean) => {
-        const variance =
-            arr.reduce((sum, item) => sum + Math.pow(item[key] - mean, 2), 0) /
-            arr.length;
-        return Math.sqrt(variance);
-    };
-
-    const historyCpu = historyData.map(d => d.cpu);
+    // ✅ SAFE history CPU extraction
+    const historyCpu = Array.isArray(historyData)
+        ? historyData.map(d => d.cpu || 0)
+        : [];
 
     const baselineMean =
         historyCpu.reduce((a, b) => a + b, 0) / historyCpu.length || 0;
@@ -38,10 +32,16 @@ function Dashboard() {
             historyCpu.length
         ) || 1;
 
+    const getStdDev = (arr, key, mean) => {
+        if (!arr.length) return 0;
+        const variance =
+            arr.reduce((sum, item) => sum + Math.pow(item[key] - mean, 2), 0) /
+            arr.length;
+        return Math.sqrt(variance);
+    };
+
     const detectAnomaly = (key) => {
         if (data.length < 7) return false;
-
-
 
         const recent = data.slice(-7, -1);
         const current = data[data.length - 1][key];
@@ -75,13 +75,11 @@ function Dashboard() {
 
         const stdDev = getStdDev(recent, key, avg);
 
-        // adaptive threshold
         const dynamicThreshold = Math.max(stdDev * 0.8, 1);
 
         return slope > dynamicThreshold && currentValue > 60;
     };
 
-    // ✅ detection values
     const cpuAnomaly = detectAnomaly("cpu");
     const ramAnomaly = detectAnomaly("ram");
 
@@ -90,8 +88,6 @@ function Dashboard() {
 
     let confidence = 0;
 
-
-
     if (cpuAnomaly) confidence += 2;
     if (ramAnomaly) confidence += 2;
     if (cpuTrend) confidence += 1;
@@ -99,13 +95,7 @@ function Dashboard() {
 
     const strongSignal = confidence >= 3;
 
-    const severity =
-        confidence >= 5 ? "high" :
-            confidence >= 3 ? "medium" :
-                "low";
-
     const predictionAlert = cpuTrend || ramTrend;
-
 
     let spikeProcess = null;
 
@@ -134,82 +124,15 @@ function Dashboard() {
         });
     }
 
-    const now = Date.now();
-
-    const anomalyDetected =
-        (cpuAnomaly || ramAnomaly) &&
-        (now - lastAlertTime > ALERT_COOLDOWN);
-
-    // ✅ anomaly effect
-
-
+    // ✅ FETCH HISTORY (logs)
     useEffect(() => {
-        fetch("https://overwatch-backend-p3go.onrender.com/api/metrics")
+        fetch(`${API_BASE}/api/logs`)
             .then(res => res.json())
-            .then(data => setHistoryData(data))
+            .then(data => setHistoryData(Array.isArray(data) ? data : []))
             .catch(err => console.error("Logs fetch error:", err));
     }, []);
 
-
-
-    useEffect(() => {
-        const now = Date.now();
-
-        if ((cpuAnomaly || ramAnomaly) && (now - lastAlertTime > ALERT_COOLDOWN)) {
-            setLastAlertTime(now);
-
-            const explanation = spikeProcess
-                ? `${spikeProcess.name} increased by ${spikeProcess.diff.toFixed(2)}%`
-                : "No dominant process found";
-
-            const title = spikeProcess
-                ? `CPU Spike: ${spikeProcess.name}`
-                : "System Anomaly";
-
-            setAlertHistory((prev) => [
-                {
-                    type: "anomaly",
-                    time: new Date().toLocaleTimeString(),
-                    timestamp: Date.now(),
-                    prevProcesses: historyData[historyData.length - 2]?.processes || [],
-                    processes,
-                    spikeProcess,
-                    explanation,   // 🔥 ADD THIS
-                    confidence,     // 🔥 ALSO ADD THIS
-                    severity,
-                    title
-                },
-                ...prev,
-            ].slice(0, 10));
-        }
-    }, [cpuAnomaly,
-        ramAnomaly,
-        lastAlertTime,
-        processes,
-        spikeProcess,
-        confidence,
-        historyData]);
-
-    // ✅ prediction effect (shared cooldown)
-    useEffect(() => {
-        const now = Date.now();
-
-        if (predictionAlert && (now - lastAlertTime > ALERT_COOLDOWN)) {
-            setLastAlertTime(now);
-
-            setAlertHistory((prev) => [
-                {
-                    type: "prediction",
-                    time: new Date().toLocaleTimeString(),
-                    timestamp: Date.now(),
-                    processes: processes
-                },
-                ...prev,
-            ].slice(0, 10));
-        }
-    }, [predictionAlert, lastAlertTime, processes]);
-
-    // ✅ data fetching
+    // ✅ FETCH LIVE DATA
     useEffect(() => {
         const formatUptime = (seconds) => {
             const hours = Math.floor(seconds / 3600);
@@ -219,7 +142,7 @@ function Dashboard() {
 
         const fetchData = async () => {
             try {
-                const res = await fetch("http://localhost:5000/metrics");
+                const res = await fetch(`${API_BASE}/api/metrics`);
                 const data = await res.json();
 
                 setCPU(data.cpu.toFixed(2) + "%");
@@ -248,145 +171,33 @@ function Dashboard() {
         return () => clearInterval(interval);
     }, []);
 
-    // ✅ health score
-    const latest = data[data.length - 1];
-
-    let healthScore = 100;
-
-    if (latest) {
-        const avgUsage = (latest.cpu + latest.ram) / 2;
-        healthScore = Math.max(0, 100 - avgUsage);
-    }
-
-    let healthColor = "text-green-400";
-    if (healthScore < 70) healthColor = "text-yellow-400";
-    if (healthScore < 40) healthColor = "text-red-500";
-
-    const selectedDataPoint = selectedTimestamp
-        ? data.find((d) => Math.abs(d.timestamp - selectedTimestamp) < 2000)
-        : null;
-
-    const selectedAlert = alertHistory.find(
-        (a) => a.timestamp === selectedTimestamp
-    );
-
     return (
         <div className="min-h-screen bg-gray-900 text-white p-6">
             <h1 className="text-3xl font-bold mb-6">
                 Overwatch Dashboard
             </h1>
 
-            {strongSignal && (
-                <div className="bg-blue-500 text-white p-4 rounded-lg mb-6">
-                    ⚡ Sudden System Spike Detected (CPU / RAM)
-                </div>
-            )}
-
-            {predictionAlert && !strongSignal && (
-                <div className="bg-yellow-400 text-black p-4 rounded-lg mb-6">
-                    ⚠️ System trend increasing (possible upcoming spike)
-                </div>
-            )}
-
-            {/* Stats */}
             <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
                 <StatCard title="CPU Usage" value={CPU} />
                 <StatCard title="Memory Usage" value={Memory} />
                 <StatCard title="Total Memory" value={totalMem} />
                 <StatCard title="Up Time" value={uptime} />
-                <StatCard
-                    title="Health Score"
-                    value={healthScore.toFixed(0)}
-                    color={healthColor}
-                />
             </div>
 
-            {/* Charts */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
                 <div className="bg-gray-800 rounded-xl p-4">
                     <h2 className="text-lg font-semibold mb-2">CPU Usage</h2>
-                    <Charts
-                        data={data}
-                        dataKey="cpu"
-                        anomaly={cpuAnomaly}
-                        selectedTimestamp={selectedTimestamp}
-                    />
+                    <Charts data={data} dataKey="cpu" />
                 </div>
 
                 <div className="bg-gray-800 rounded-xl p-4">
                     <h2 className="text-lg font-semibold mb-2">RAM Usage</h2>
-                    <Charts data={data} selectedTimestamp={selectedTimestamp} dataKey="ram" anomaly={ramAnomaly} />
+                    <Charts data={data} dataKey="ram" />
                 </div>
-
-                <div className="bg-gray-800 rounded-xl p-4 mt-6">
-                    <h2 className="text-lg font-semibold mb-4">Top Processes</h2>
-
-                    {processes.length === 0 ? (
-                        <p className="text-gray-400">No process data</p>
-                    ) : (
-                        processes.map((proc, index) => (
-                            <div
-                                key={index}
-                                className="flex justify-between border-b border-gray-700 py-2"
-                            >
-                                <span>{proc.name}</span>
-                                <span>{proc.cpu}%</span>
-                            </div>
-                        ))
-                    )}
-                </div>
-            </div>
-
-            {/* Alert History */}
-            <div className="bg-gray-800 rounded-xl p-4 mt-6">
-                <h2 className="text-lg font-semibold mb-4">Alert History</h2>
-
-                {alertHistory.length === 0 && (
-                    <p className="text-gray-400">No alerts yet</p>
-                )}
-
-                {alertHistory.map((alert, index) => (
-                    <div key={index}
-                        onClick={() => setSelectedTimestamp(alert.timestamp)}
-                        style={{ cursor: "pointer" }}
-                    >
-                        {alert.title} - {alert.time}
-                    </div>
-                ))}
-
-                {selectedAlert && (
-                    <div className="mt-4">
-
-                        <h3 className="font-semibold mb-2">Before Spike</h3>
-                        {selectedAlert.prevProcesses?.map((p, i) => (
-                            <div
-                                key={i}
-                                className="flex justify-between border-b border-gray-700 py-1"
-                            >
-                                <span className="truncate max-w-[200px]">{p.name}</span>
-                                <span>{p.cpu}%</span>
-                            </div>
-                        ))}
-
-                        <h3 className="font-semibold mt-4 mb-2">During Spike</h3>
-                        {selectedAlert.processes?.map((p, i) => (
-                            <div
-                                key={i}
-                                className="flex justify-between border-b border-gray-700 py-1"
-                            >
-                                <span className="truncate max-w-[200px]">
-                                    {p.name}
-                                    {selectedAlert.spikeProcess?.name === p.name && " 🔴"}
-                                </span>
-                                <span>{p.cpu}%</span>
-                            </div>
-                        ))}
-
-                    </div>
-                )}
             </div>
         </div>
     );
 }
 
 export default Dashboard;
+```
