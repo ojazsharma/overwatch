@@ -144,7 +144,7 @@ function Dashboard() {
 
 
     useEffect(() => {
-        fetch("http://localhost:5000/logs")
+        fetch(`${import.meta.env.VITE_API_URL}/api/metrics`)
             .then(res => res.json())
             .then(data => setHistoryData(data))
             .catch(err => console.error("Logs fetch error:", err));
