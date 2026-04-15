@@ -1,30 +1,25 @@
 // backend/server.js
-import cors from "cors";
 
-
-app.use(cors());
 const express = require("express");
-const si = require("systeminformation");
 const cors = require("cors");
+const si = require("systeminformation");
 const os = require("os");
 const fs = require("fs");
 const path = require("path");
 
-
-const LOG_FILE = path.join(__dirname, "metrics-log.json");
-
-
 const app = express();
 
-// allow frontend to connect
+// ✅ CORS
 app.use(cors());
 
+// ✅ Log file path
+const LOG_FILE = path.join(__dirname, "metrics-log.json");
 
+// ✅ Save metrics safely
 function saveMetrics(data) {
     try {
         let logs = [];
 
-        // STEP 1: read existing file safely
         if (fs.existsSync(LOG_FILE)) {
             const content = fs.readFileSync(LOG_FILE, "utf-8");
 
@@ -37,20 +32,17 @@ function saveMetrics(data) {
             }
         }
 
-        // STEP 2: ensure array
         if (!Array.isArray(logs)) {
             logs = [];
         }
 
-        // STEP 3: push new data
         logs.push(data);
 
-        // STEP 4: limit size
+        // limit to last 500 logs
         if (logs.length > 500) {
             logs = logs.slice(-500);
         }
 
-        // STEP 5: write back
         fs.writeFileSync(LOG_FILE, JSON.stringify(logs, null, 2));
 
     } catch (err) {
@@ -58,8 +50,8 @@ function saveMetrics(data) {
     }
 }
 
-// API route
-app.get("/metrics", async (req, res) => {
+// ✅ Metrics API
+app.get("/api/metrics", async (req, res) => {
     try {
         const cpuData = await si.currentLoad();
 
@@ -69,7 +61,7 @@ app.get("/metrics", async (req, res) => {
 
         const memoryUsage = (usedMem / totalMem) * 100;
 
-        const uptime = os.uptime(); // seconds
+        const uptime = os.uptime();
 
         const processData = await si.processes();
 
@@ -78,22 +70,21 @@ app.get("/metrics", async (req, res) => {
             .slice(0, 5)
             .map(p => ({
                 name: p.name,
-                cpu: p.cpu.toFixed(2)
+                cpu: Number(p.cpu.toFixed(2))
             }));
 
         const data = {
-            cpu: cpuData.currentLoad,
-            memory: memoryUsage,
-            totalMem: (totalMem / (1024 ** 3)).toFixed(2),
-            uptime: uptime,
+            cpu: Number(cpuData.currentLoad.toFixed(2)),
+            memory: Number(memoryUsage.toFixed(2)),
+            totalMem: Number((totalMem / (1024 ** 3)).toFixed(2)),
+            uptime,
             processes: topProcesses,
+            timestamp: new Date().toISOString()
         };
 
-        // 🔥 THIS LINE WAS MISSING
         saveMetrics(data);
 
         res.json(data);
-
 
     } catch (error) {
         console.error("Error fetching metrics:", error);
@@ -101,8 +92,8 @@ app.get("/metrics", async (req, res) => {
     }
 });
 
-
-app.get("/logs", (req, res) => {
+// ✅ Logs API
+app.get("/api/logs", (req, res) => {
     try {
         if (!fs.existsSync(LOG_FILE)) {
             return res.json([]);
@@ -110,12 +101,20 @@ app.get("/logs", (req, res) => {
 
         const logs = JSON.parse(fs.readFileSync(LOG_FILE, "utf-8"));
         res.json(logs);
+
     } catch (err) {
         res.status(500).json({ error: "Failed to read logs" });
     }
 });
 
-// start server
-app.listen(5000, () => {
-    console.log("Server running on port 5000");
+// ✅ ROOT (important for testing)
+app.get("/", (req, res) => {
+    res.send("Backend is running 🚀");
+});
+
+// ✅ START SERVER (Render-compatible)
+const PORT = process.env.PORT || 5000;
+
+app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
 });
