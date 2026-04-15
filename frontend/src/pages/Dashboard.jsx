@@ -144,7 +144,7 @@ function Dashboard() {
 
 
     useEffect(() => {
-        fetch(`${import.meta.env.VITE_API_URL}/api/metrics`)
+        fetch("https://overwatch-backend-p3go.onrender.com/api/metrics")
             .then(res => res.json())
             .then(data => setHistoryData(data))
             .catch(err => console.error("Logs fetch error:", err));
